@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ls-lab-4-helm-chart
+description: A Helm chart for Large Systems lab 4 at Innopolis University
+
+type: application
+
+version: 0.1.0
+
+appVersion: "1.16.0"

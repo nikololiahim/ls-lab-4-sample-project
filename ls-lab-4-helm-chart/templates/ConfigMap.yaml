@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ls-lab-4-config-map
+  labels:
+    app: my-app
+data:
+  DEFAULT_TZ: {{ .Values.variables.config.DEFAULT_TZ }}

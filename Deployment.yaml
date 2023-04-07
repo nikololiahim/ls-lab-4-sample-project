@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ls-lab-4-sample-deployment
+  labels:
+    app: ls-lab-4
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: ls-lab-4
+  template:
+    metadata:
+      labels:
+        app: ls-lab-4
+    spec:
+      volumes:
+        - name: config
+          configMap:
+            name: from-json
+        - name: secrets
+          secret:
+            secretName: secret-from-file
+      containers:
+        - name: ls-lab-4
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+            - name: secrets
+              mountPath: /etc/secrets
+          image: nikololiahim/ls-lab-4-sample-project:latest
+          ports:
+            - containerPort: 9090
+          env:
+            - name: DEFAULT_TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: ls-lab-4-config-map
+                  key: DEFAULT_TZ
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ls-lab-4-secret
+                  key: DB_USER
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: ls-lab-4-secret
+                  key: DB_PASS
+

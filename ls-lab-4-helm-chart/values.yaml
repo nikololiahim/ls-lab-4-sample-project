@@ -1,0 +1,16 @@
+variables:
+  secrets:
+    DB_USER: "postgres"
+    DB_PASS: "postgres"
+  config:
+    DEFAULT_TZ: "America/Sao_Paulo"
+
+label:
+  app: ls-lab-4
+
+app:
+  replicas: 3
+  image: nikololiahim/ls-lab-4-sample-project:latest
+
+service:
+  port: 9090
