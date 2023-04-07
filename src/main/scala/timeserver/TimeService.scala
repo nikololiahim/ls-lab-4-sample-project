@@ -2,21 +2,28 @@ package timeserver
 
 import zio.*
 import java.time.ZoneId
+import timeserver.Config
 
 trait TimeService:
   def getNow: UIO[GetNowResponse]
   def setTimezone(tz: Timezone): UIO[Unit]
+  def getTimezone: UIO[GetTimezoneResponse]
 
 object TimeService:
-  val live: ULayer[TimeService] = ZLayer.fromZIO(
-    ZIO.succeed {
-      new TimeService:
+  val live: URLayer[Config, TimeService] = ZLayer.fromZIO {
+    for
+      config <- ZIO.service[Config]
+      defaultTimezone <- Ref.make(config.time.defaultTimezone)
+    yield TimeServiceImpl(defaultTimezone)
+  }
 
-        private var tz: Timezone = Timezone("Europe/Moscow")
+final class TimeServiceImpl(timezone: Ref[Timezone]) extends TimeService:
+  override def getNow: UIO[GetNowResponse] =
+    for
+      tz <- getTimezone.map(_.timezone)
+      now <- Clock.instant.map(_.atZone(ZoneId.of(tz.value)))
+    yield GetNowResponse(now)
 
-        override def getNow: UIO[GetNowResponse] = Clock.instant.map(_.atZone(ZoneId.of(tz.value))).map(GetNowResponse(_))
+  override def setTimezone(tz: Timezone): UIO[Unit] = timezone.set(tz)
 
-        override def setTimezone(tz: Timezone): UIO[Unit] = ZIO.succeed(this.tz = tz)
-    }
-  )
-
+  override def getTimezone: UIO[GetTimezoneResponse] = timezone.get.map(GetTimezoneResponse(_))

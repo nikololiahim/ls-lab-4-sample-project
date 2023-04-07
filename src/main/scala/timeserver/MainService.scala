@@ -8,8 +8,8 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.server.metrics.prometheus.PrometheusMetrics
 import sttp.tapir.swagger.bundle.SwaggerInterpreter
 import sttp.tapir.ztapir.ZServerEndpoint
-import timeserver.MainService.{getNowEndpoint, getVisitorsEndpoint, patchNowEndpoint}
-import zio.{Task, UIO, ZIO, ZLayer}
+import timeserver.MainService.*
+import zio.*
 
 import java.time.ZonedDateTime
 
@@ -26,25 +26,39 @@ final class MainService(
     def leftVoid: Either[Unit, A] = leftMap(_ => ())
 
   val getNowServerEndpoint: ZServerEndpoint[Any, Any] =
-    getNowEndpoint.serverLogic { case (headers) =>
-      val userAgent = UserAgent(headers.headOption.getOrElse("anonymous"))
+    getNowEndpoint.serverLogic { case headers =>
+      val userAgent = extractUserAgent(headers)
       (for
-        _ <- visitorService.putVisitor(Visitor(userAgent))
+        timestamp <- Clock.instant
+        _ <- visitorService.putVisitor(Visitor(userAgent, timestamp))
         now <- timeService.getNow
       yield now).either.map(_.leftVoid)
     }
-  val patchNowServerEndpoint: ZServerEndpoint[Any, Any] =
-    patchNowEndpoint.serverLogic { case (tz, headers) =>
-      val userAgent = UserAgent(headers.headOption.getOrElse("anonymous"))
+
+  val getTimezoneServerEndpoint: ZServerEndpoint[Any, Any] =
+    getTimezoneEndpoint.serverLogic(headers =>
+      val userAgent = extractUserAgent(headers)
       (for
-        _ <- visitorService.putVisitor(Visitor(userAgent))
+        timestamp <- Clock.instant
+        _ <- visitorService.putVisitor(Visitor(userAgent, timestamp))
+        tz <- timeService.getTimezone
+      yield tz).either.map(_.leftVoid)
+    )
+
+  val setTimezoneServerEndpoint: ZServerEndpoint[Any, Any] =
+    setTimezoneEndpoint.serverLogic { case (tz, headers) =>
+      val userAgent = extractUserAgent(headers)
+      (for
+        timestamp <- Clock.instant
+        _ <- visitorService.putVisitor(Visitor(userAgent, timestamp))
         _ <- timeService.setTimezone(tz)
       yield ()).either.map(_.leftVoid)
     }
   val getVisitorsServerEndpoint: ZServerEndpoint[Any, Any] =
     getVisitorsEndpoint.serverLogic(_ => visitorService.getVisitors.either.map(_.leftVoid))
 
-  val apiEndpoints: List[ZServerEndpoint[Any, Any]] = List(getNowServerEndpoint, patchNowServerEndpoint, getVisitorsServerEndpoint)
+  val apiEndpoints: List[ZServerEndpoint[Any, Any]] =
+    List(getNowServerEndpoint, setTimezoneServerEndpoint, getTimezoneServerEndpoint, getVisitorsServerEndpoint)
 
   val docEndpoints: List[ZServerEndpoint[Any, Any]] = SwaggerInterpreter()
     .fromServerEndpoints[Task](apiEndpoints, "ls-lab-4-sample-project", "1.0.0")
@@ -56,7 +70,10 @@ final class MainService(
 
 object MainService:
 
-  val live = ZLayer.fromZIO {
+  private def extractUserAgent(headers: List[String]): UserAgent =
+    UserAgent(headers.headOption.getOrElse("anonymous"))
+
+  val live: URLayer[VisitorService & TimeService, MainService] = ZLayer.fromZIO {
     for
       timeService <- ZIO.service[TimeService]
       visitorService <- ZIO.service[VisitorService]
@@ -69,11 +86,17 @@ object MainService:
       .in(header[List[String]](HeaderNames.UserAgent))
       .out(jsonBody[GetNowResponse])
 
-  val patchNowEndpoint =
+  val setTimezoneEndpoint =
     endpoint.patch
-      .in("now")
+      .in("timezone")
       .in(query[Timezone]("timezone"))
       .in(header[List[String]](HeaderNames.UserAgent))
+
+  val getTimezoneEndpoint =
+    endpoint.get
+      .in("timezone")
+      .in(header[List[String]](HeaderNames.UserAgent))
+      .out(jsonBody[GetTimezoneResponse])
 
   val getVisitorsEndpoint =
     endpoint.get

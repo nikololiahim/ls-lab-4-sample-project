@@ -13,6 +13,7 @@ lazy val rootProject = (project in file(".")).settings(
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % tapirVersion,
       "ch.qos.logback" % "logback-classic" % "1.4.6",
       "com.softwaremill.sttp.tapir" %% "tapir-sttp-stub-server" % tapirVersion % Test,
+      "com.github.pureconfig" %% "pureconfig-core" % "0.17.2",
       "io.monix" %% "newtypes-core" % "0.2.3",
       "dev.zio" %% "zio-test" % "2.0.10" % Test,
       "dev.zio" %% "zio-test-sbt" % "2.0.10" % Test,
