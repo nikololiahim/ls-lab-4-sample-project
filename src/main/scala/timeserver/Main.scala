@@ -1,6 +1,7 @@
 package timeserver
 
-import org.slf4j.LoggerFactory
+import scribe.*
+import scribe.handler.LogHandler
 import sttp.tapir.server.interceptor.log.DefaultServerLog
 import sttp.tapir.server.ziohttp.{ZioHttpInterpreter, ZioHttpServerOptions}
 import zio.*
@@ -10,14 +11,26 @@ import timeserver.Config
 trait ServerModule
 
 object Main extends ZIOAppDefault:
-  val log = LoggerFactory.getLogger(ZioHttpInterpreter.getClass.getName)
+
+  Logger.root.clearHandlers().clearModifiers().withHandler(minimumLevel = Some(Level.Trace)).replace()
+
+  val log = Logger(ZioHttpInterpreter.getClass.getName)
+    .clearModifiers()
+    .clearHandlers()
+    .withHandler(minimumLevel = Some(Level.Trace))
+
+  val MainServerConfig: URLayer[Config, ServerConfig] =
+    ZLayer
+      .service[Config]
+      .map(env =>
+        val config = env.get[Config]
+        env.add(ServerConfig.default.binding(config.server.host.toString, config.server.port)).prune[ServerConfig]
+      )
 
   val MainLayer = ZLayer.fromZIO {
     for
       mainService <- ZIO.service[MainService]
-      server <- ZIO.service[Server]
-      config <- ZIO.service[Config]
-      serverConfig = ServerConfig.default.binding(config.server.host.toString, config.server.port)
+      serverConfig <- ZIO.service[ServerConfig]
       serverOptions =
         ZioHttpServerOptions.customiseInterceptors
           .serverLog(
@@ -33,21 +46,19 @@ object Main extends ZIOAppDefault:
           .options
       app = ZioHttpInterpreter(serverOptions).toHttp(mainService.all)
       actualPort <- Server.install(app.withDefaultErrorResponse)
-      _ <- Console.printLine(s"Go to http://${config.server.host}:${config.server.port}/docs to open SwaggerUI. Press ENTER key to exit.")
-      _ <- Console.readLine
+      _ <- Console.printLine(
+        s"Go to http://${serverConfig.address.getHostName}:$actualPort/docs to open SwaggerUI. Press ENTER key to exit."
+      )
     yield new ServerModule {}
   }
 
   override def run: ZIO[Any with ZIOAppArgs with Scope, Any, Any] =
-    ZIO
-      .service[ServerModule]
+    MainLayer.launch
       .provide(
-        MainLayer,
-        Config.live,
-        ServerConfig.live,
+        MainServerConfig,
         Server.live,
+        Config.live,
         MainService.live,
         TimeService.live,
         VisitorService.live
       )
-      .exitCode
